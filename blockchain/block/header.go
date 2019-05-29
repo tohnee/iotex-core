@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/iotexproject/iotex-core/action"
+	"github.com/iotexproject/iotex-core/blockchain/genesis"
 	"github.com/iotexproject/iotex-core/pkg/log"
 	"github.com/iotexproject/iotex-core/pkg/util/byteutil"
 )
@@ -32,6 +33,7 @@ type Header struct {
 	txRoot           hash.Hash256     // merkle root of all transactions
 	deltaStateDigest hash.Hash256     // digest of state change by this block
 	receiptRoot      hash.Hash256     // root of receipt trie
+	logsBloom        BloomFilter      // bloom filter for all contract events in this block
 	blockSig         []byte           // block signature
 	pubkey           crypto.PublicKey // block producer's public key
 }
@@ -78,7 +80,7 @@ func (h *Header) BlockHeaderCoreProto() *iotextypes.BlockHeaderCore {
 	if err != nil {
 		log.L().Panic("failed to cast to ptypes.timestamp", zap.Error(err))
 	}
-	return &iotextypes.BlockHeaderCore{
+	header := iotextypes.BlockHeaderCore{
 		Version:          h.version,
 		Height:           h.height,
 		Timestamp:        ts,
@@ -87,6 +89,10 @@ func (h *Header) BlockHeaderCoreProto() *iotextypes.BlockHeaderCore {
 		DeltaStateDigest: h.deltaStateDigest[:],
 		ReceiptRoot:      h.receiptRoot[:],
 	}
+	if h.logsBloom != nil && h.height >= genesis.PacificHeight() {
+		header.LogsBloom = h.logsBloom.Bytes()
+	}
+	return &header
 }
 
 // LoadFromBlockHeaderProto loads from protobuf
@@ -117,7 +123,12 @@ func (h *Header) loadFromBlockHeaderCoreProto(pb *iotextypes.BlockHeaderCore) er
 	copy(h.txRoot[:], pb.GetTxRoot())
 	copy(h.deltaStateDigest[:], pb.GetDeltaStateDigest())
 	copy(h.receiptRoot[:], pb.GetReceiptRoot())
-	return nil
+	if pb.GetLogsBloom() == nil {
+		h.logsBloom = nil
+		return nil
+	}
+	h.logsBloom, err = BloomFilterFromBytes(pb.GetLogsBloom())
+	return err
 }
 
 // CoreByteStream returns byte stream for header core.

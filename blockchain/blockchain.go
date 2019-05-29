@@ -8,6 +8,7 @@ package blockchain
 
 import (
 	"context"
+	"github.com/iotexproject/iotex-core/blockchain/genesis"
 	"math/big"
 	"os"
 	"strconv"
@@ -630,11 +631,16 @@ func (bc *blockchain) MintNewBlock(
 	if newblockHeight == 1 {
 		prevBlkHash = bc.config.Genesis.Hash()
 	}
+	var bloom block.BloomFilter
+	if newblockHeight >= genesis.PacificHeight() {
+		bloom = calculateLogsBloom(rc)
+	}
 	blk, err := block.NewBuilder(ra).
 		SetPrevBlockHash(prevBlkHash).
 		SetDeltaStateDigest(ws.Digest()).
 		SetReceipts(rc).
 		SetReceiptRoot(calculateReceiptRoot(rc)).
+		SetLogsBloom(bloom).
 		SignAndBuild(sk)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create block")
@@ -1377,4 +1383,16 @@ func calculateReceiptRoot(receipts []*action.Receipt) hash.Hash256 {
 	}
 	res := crypto.NewMerkleTree(h).HashTree()
 	return res
+}
+
+func calculateLogsBloom(receipts []*action.Receipt) block.BloomFilter {
+	bloom := block.NewBloomFilter()
+	for _, receipt := range receipts {
+		for _, log := range receipt.Logs {
+			for _, topic := range log.Topics {
+				bloom.Add(topic)
+			}
+		}
+	}
+	return bloom
 }

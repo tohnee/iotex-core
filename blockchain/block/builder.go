@@ -68,6 +68,12 @@ func (b *Builder) SetReceiptRoot(h hash.Hash256) *Builder {
 	return b
 }
 
+// SetLogsBloom sets the logs bloom filter value after running actions included in this building block.
+func (b *Builder) SetLogsBloom(bloom BloomFilter) *Builder {
+	b.blk.Header.logsBloom = bloom
+	return b
+}
+
 // SignAndBuild signs and then builds a block.
 func (b *Builder) SignAndBuild(signerPrvKey crypto.PrivateKey) (Block, error) {
 	if !bytes.Equal(b.blk.Header.pubkey.Bytes(), signerPrvKey.PublicKey().Bytes()) {

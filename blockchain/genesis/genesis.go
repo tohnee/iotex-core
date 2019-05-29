@@ -196,6 +196,11 @@ func New() (Genesis, error) {
 	return genesis, nil
 }
 
+// PacificHeight returns the pacific height
+func PacificHeight() uint64 {
+	return defaultConfig().PacificBlockHeight
+}
+
 // Hash is the hash of genesis config
 func (g *Genesis) Hash() hash.Hash256 {
 	gbProto := iotextypes.GenesisBlockchain{
