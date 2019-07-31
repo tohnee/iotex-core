@@ -8,11 +8,11 @@ package db
 
 import (
 	"context"
-
 	"github.com/pkg/errors"
 	bolt "go.etcd.io/bbolt"
 
 	"github.com/iotexproject/iotex-core/config"
+	"github.com/iotexproject/iotex-core/pkg/util/byteutil"
 )
 
 const fileMode = 0600
@@ -176,6 +176,59 @@ func (b *boltDB) Commit(batch KVStoreBatch) (err error) {
 		err = errors.Wrap(ErrIO, err.Error())
 	}
 	return err
+}
+
+// CountingIndex returns the index, and nil if not exist
+func (b *boltDB) CountingIndex(name []byte) (CountingIndex, error) {
+	var size []byte
+	if err := b.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(name)
+		if bucket == nil {
+			return errors.Wrapf(ErrNotExist, "bucket = %x doesn't exist", name)
+		}
+		// get the number of keys
+		size = bucket.Get(byteutil.Uint64ToBytesBigEndian(0))
+		if size == nil {
+			return errors.Wrap(ErrNotExist, "total count doesn't exist")
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return &countingIndex{
+		b.db,
+		b.config.NumRetries,
+		name,
+		byteutil.BytesToUint64BigEndian(size),
+	}, nil
+}
+
+// CreateCountingIndexNX creates a new index if it does not exist, otherwise return existing index
+func (b *boltDB) CreateCountingIndexNX(name []byte) (CountingIndex, error) {
+	var size uint64
+	if err := b.db.Update(func(tx *bolt.Tx) error {
+		bucket, err := tx.CreateBucketIfNotExists(name)
+		if err != nil {
+			return errors.Wrapf(err, "failed to create bucket %x", name)
+		}
+		// check the number of keys
+		zero := byteutil.Uint64ToBytesBigEndian(0)
+		total := bucket.Get(zero)
+		if total == nil {
+			// put 0 as total number of keys
+			return bucket.Put(zero, zero)
+		}
+		size = byteutil.BytesToUint64BigEndian(total)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return &countingIndex{
+		b.db,
+		b.config.NumRetries,
+		name,
+		size,
+	}, nil
 }
 
 //======================================
